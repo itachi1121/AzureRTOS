@@ -26,6 +26,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "main.h"
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -86,6 +87,8 @@ static  void  AppTaskStart (ULONG thread_input)
   {
     HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_1);
     tx_thread_sleep(1000);
+    static int i = 0;
+    printf("hello world %d\r\n", i++);
   }
 }
 
