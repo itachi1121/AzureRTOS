@@ -58,4 +58,4 @@ int fputc(int ch, FILE *f)
   return ch;
 }
 
-/************************ (C) COPYRIGHT GauTure *****END OF FILE****/
+/*************************************END OF FILE**********************/
