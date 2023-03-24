@@ -59,17 +59,24 @@ static TX_BYTE_POOL tx_app_byte_pool;
 #define  APP_CFG_TASK_IDLE_STK_SIZE                     1024u
 #define  APP_CFG_TASK_STAT_STK_SIZE                     1024u
 
+
+/* 数值越小，优先级越高 */
 #define  APP_CFG_TASK_START_PRIO                          2u
 #define  APP_CFG_TASK_MsgPro_PRIO                         3u
 #define  APP_CFG_TASK_USER_IF_PRIO                        4u
 #define  APP_CFG_TASK_COM_PRIO                            5u
 #define  APP_CFG_TASK_STAT_PRIO                           30u
 #define  APP_CFG_TASK_IDLE_PRIO                           31u
-#define LED_CFG_TASK_PRIO                                 6u
+#define  LED_CFG_TASK_PRIO                                 6u
+#define  SEMP_CFG_TASK_PRIO                                5u
 
 static UCHAR tx_byte_pool_buffer[TX_APP_MEM_POOL_SIZE];
 static TX_BYTE_POOL tx_app_byte_pool;
 static int cnt = 0;
+
+TX_SEMAPHORE Semaphore;
+
+
 /*
 *********************************************************************************************************
 *	函 数 名: AppTaskStart
@@ -83,12 +90,19 @@ static  void  AppTaskStart (ULONG thread_input)
 {
   (void)thread_input;
 
+  UINT i = 0;
   while (1)
   {
     HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_1);
-    tx_thread_sleep(1000);
-    static int i = 0;
-    printf("hello world %d\r\n", i++);
+    
+    tx_thread_sleep(500);
+    
+   // printf("app task %d\r\n", ++i);
+    
+    if(i % 5 == 0)
+    {
+  //    tx_semaphore_put(&Semaphore);    
+    }
   }
 }
 
@@ -99,17 +113,56 @@ static  void LedTaskStart (ULONG thread_input)
 
   while (1)
   {
-    HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_0);
-    tx_thread_sleep(200);
-    cnt++;
+//    HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_0);
+    tx_thread_sleep(500);
+//    HAL_Delay(1000);
+    static int i = 0;
+//    printf("hello world %d\r\n", i++);
   }
 }
+
+
+
+
+/*
+*********************************************************************************************************
+* 函 数 名: AppTaskMsgPro
+* 功能说明: 消息处理，这里用作信号量获取。
+* 形 参: thread_input 是在创建该任务时传递的形参
+* 返 回 值: 无
+优 先 级: 3
+*********************************************************************************************************
+*/
+static void AppTaskMsgPro(ULONG thread_input)
+{
+  UINT status;
+
+  printf("semaphore task start \r\n");
+  
+  tx_semaphore_create(&Semaphore, "Semaphore", 0); /* 创建信号量，初始值为 0，用于信号同步 */  
+  
+  while(1)
+  {
+    status = tx_semaphore_get(&Semaphore, TX_WAIT_FOREVER);
+
+    if(status == TX_SUCCESS)
+    {
+      /* 接收到信号量 */
+      printf("get semaphore \r\n");
+    }
+  }
+}
+
+
 
 static  TX_THREAD   AppTaskStartTCB;
 static  uint64_t    AppTaskStartStk[APP_CFG_TASK_START_STK_SIZE / 8];
 
 static  TX_THREAD   LedTaskStartTCB;
 static  uint64_t    LedTaskStartStk[APP_CFG_TASK_START_STK_SIZE / 8];
+
+static  TX_THREAD   SemaphoreTaskStartTCB;
+static  uint64_t    SemaphoreTaskStartStk[APP_CFG_TASK_START_STK_SIZE / 8];
 
 /* USER CODE END PV */
 
@@ -146,6 +199,17 @@ VOID tx_application_define(VOID *first_unused_memory)
                    APP_CFG_TASK_START_STK_SIZE,    /* 堆栈空间大小 */
                    LED_CFG_TASK_PRIO,              /* 任务优先级*/
                    LED_CFG_TASK_PRIO,              /* 任务抢占阀值 */
+                   TX_NO_TIME_SLICE,               /* 不开启时间片 */
+                   TX_AUTO_START);                 /* 创建后立即启动 */
+
+  tx_thread_create(&SemaphoreTaskStartTCB,              /* 任务控制块地址 */
+                   "Semaphore Task Start",              /* 任务名 */
+                   AppTaskMsgPro,                  /* 启动任务函数地址 */
+                   0,                             /* 传递给任务的参数 */
+                   &SemaphoreTaskStartStk[0],            /* 堆栈基地址 */
+                   APP_CFG_TASK_START_STK_SIZE,    /* 堆栈空间大小 */
+                   SEMP_CFG_TASK_PRIO,              /* 任务优先级*/
+                   SEMP_CFG_TASK_PRIO,              /* 任务抢占阀值 */
                    TX_NO_TIME_SLICE,               /* 不开启时间片 */
                    TX_AUTO_START);                 /* 创建后立即启动 */
 
