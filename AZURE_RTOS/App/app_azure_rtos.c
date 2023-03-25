@@ -27,6 +27,7 @@
 /* USER CODE BEGIN Includes */
 #include "main.h"
 #include <stdio.h>
+#include <stdarg.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -77,6 +78,30 @@ static int cnt = 0;
 TX_SEMAPHORE Semaphore;
 
 
+static TX_MUTEX AppPrintfSemp; /* 用于 printf 互斥 */
+/*
+*********************************************************************************************************
+* 函 数 名: App_Printf
+* 功能说明: 线程安全的 printf 方式 
+* 形 参: 同 printf 的参数。
+* 在 C 中，当无法列出传递函数的所有实参的类型和数目时,可以用省略号指定参数表
+* 返 回 值: 无
+*********************************************************************************************************
+*/
+static void App_Printf(const char *fmt, ...)
+{
+ char buf_str[200 + 1]; /* 特别注意，如果 printf 的变量较多，注意此局部变量的大小是否够用 */
+ va_list v_args;
+ va_start(v_args, fmt);
+ (void)vsnprintf((char *)&buf_str[0], (size_t ) sizeof(buf_str), (char const *) fmt, v_args);
+ va_end(v_args);
+
+ /* 互斥操作 */
+ tx_mutex_get(&AppPrintfSemp, TX_WAIT_FOREVER);
+ printf("%s", buf_str);
+ tx_mutex_put(&AppPrintfSemp);
+}
+
 /*
 *********************************************************************************************************
 *	函 数 名: AppTaskStart
@@ -90,15 +115,17 @@ static  void  AppTaskStart (ULONG thread_input)
 {
   (void)thread_input;
 
+  tx_mutex_create(&AppPrintfSemp,"AppPrintfSemp",TX_INHERIT);
+  
   UINT i = 0;
   while (1)
   {
     HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_1);
     
-    tx_thread_sleep(500);
-    
-   // printf("app task %d\r\n", ++i);
-    
+    tx_thread_sleep(200);
+
+    //App_Printf("app task %d\r\n", ++i);
+    App_Printf("app task %d\r\n", ++i);
     if(i % 5 == 0)
     {
   //    tx_semaphore_put(&Semaphore);    
@@ -110,14 +137,14 @@ static  void LedTaskStart (ULONG thread_input)
 {
   (void)thread_input;
 
-
+  UINT i = 0;
   while (1)
   {
 //    HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_0);
     tx_thread_sleep(500);
-//    HAL_Delay(1000);
-    static int i = 0;
-//    printf("hello world %d\r\n", i++);
+
+//    App_Printf("hello world %d\r\n", i++);
+    App_Printf("hello world hello world hello world hello world hello world hello world hello world %d\r\n", i++);
   }
 }
 
