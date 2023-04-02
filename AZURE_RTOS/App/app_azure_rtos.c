@@ -76,13 +76,14 @@ static TX_BYTE_POOL tx_app_byte_pool;
 static int cnt = 0;
 
 TX_SEMAPHORE Semaphore;
+TX_EVENT_FLAGS_GROUP EventGroup;
 
 
 static TX_MUTEX AppPrintfSemp; /* 用于 printf 互斥 */
 /*
 *********************************************************************************************************
 * 函 数 名: App_Printf
-* 功能说明: 线程安全的 printf 方式 
+* 功能说明: 线程安全的 printf 方式
 * 形 参: 同 printf 的参数。
 * 在 C 中，当无法列出传递函数的所有实参的类型和数目时,可以用省略号指定参数表
 * 返 回 值: 无
@@ -90,16 +91,16 @@ static TX_MUTEX AppPrintfSemp; /* 用于 printf 互斥 */
 */
 static void App_Printf(const char *fmt, ...)
 {
- char buf_str[200 + 1]; /* 特别注意，如果 printf 的变量较多，注意此局部变量的大小是否够用 */
- va_list v_args;
- va_start(v_args, fmt);
- (void)vsnprintf((char *)&buf_str[0], (size_t ) sizeof(buf_str), (char const *) fmt, v_args);
- va_end(v_args);
+  char buf_str[200 + 1]; /* 特别注意，如果 printf 的变量较多，注意此局部变量的大小是否够用 */
+  va_list v_args;
+  va_start(v_args, fmt);
+  (void)vsnprintf((char *)&buf_str[0], (size_t ) sizeof(buf_str), (char const *) fmt, v_args);
+  va_end(v_args);
 
- /* 互斥操作 */
- tx_mutex_get(&AppPrintfSemp, TX_WAIT_FOREVER);
- printf("%s", buf_str);
- tx_mutex_put(&AppPrintfSemp);
+  /* 互斥操作 */
+  tx_mutex_get(&AppPrintfSemp, TX_WAIT_FOREVER);
+  printf("%s", buf_str);
+  tx_mutex_put(&AppPrintfSemp);
 }
 
 /*
@@ -115,20 +116,22 @@ static  void  AppTaskStart (ULONG thread_input)
 {
   (void)thread_input;
 
-  tx_mutex_create(&AppPrintfSemp,"AppPrintfSemp",TX_INHERIT);
-  
+  tx_mutex_create(&AppPrintfSemp, "AppPrintfSemp", TX_INHERIT);
+
   UINT i = 0;
+
   while (1)
   {
     HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_1);
-    
+
     tx_thread_sleep(200);
 
     //App_Printf("app task %d\r\n", ++i);
     App_Printf("app task %d\r\n", ++i);
+
     if(i % 5 == 0)
     {
-  //    tx_semaphore_put(&Semaphore);    
+      //    tx_semaphore_put(&Semaphore);
     }
   }
 }
@@ -138,13 +141,16 @@ static  void LedTaskStart (ULONG thread_input)
   (void)thread_input;
 
   UINT i = 0;
+
   while (1)
   {
 //    HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_0);
     tx_thread_sleep(500);
 
 //    App_Printf("hello world %d\r\n", i++);
-    App_Printf("hello world hello world hello world hello world hello world hello world hello world %d\r\n", i++);
+
+
+
   }
 }
 
@@ -165,9 +171,9 @@ static void AppTaskMsgPro(ULONG thread_input)
   UINT status;
 
   printf("semaphore task start \r\n");
-  
-  tx_semaphore_create(&Semaphore, "Semaphore", 0); /* 创建信号量，初始值为 0，用于信号同步 */  
-  
+
+  tx_semaphore_create(&Semaphore, "Semaphore", 0); /* 创建信号量，初始值为 0，用于信号同步 */
+
   while(1)
   {
     status = tx_semaphore_get(&Semaphore, TX_WAIT_FOREVER);
@@ -180,7 +186,30 @@ static void AppTaskMsgPro(ULONG thread_input)
   }
 }
 
+static void EvnetTaskMsgPro(ULONG thread_input)
+{
+  UINT status ;
+  ULONG actual_events;
 
+  printf("event task start \r\n");
+
+  tx_event_flags_create(&EventGroup, "EventGroupName");
+  
+  while(1)
+  {
+    status = tx_event_flags_get(&EventGroup, 
+                                  EVENT_KEY_PRESS, 
+                                  TX_OR_CLEAR, 
+                                  &actual_events, 
+                                  TX_WAIT_FOREVER); 
+
+    if(status == TX_SUCCESS)
+    {
+      /* 事件发生 */
+      printf("get pressed event \r\n");
+    }
+  }
+}
 
 static  TX_THREAD   AppTaskStartTCB;
 static  uint64_t    AppTaskStartStk[APP_CFG_TASK_START_STK_SIZE / 8];
@@ -191,6 +220,8 @@ static  uint64_t    LedTaskStartStk[APP_CFG_TASK_START_STK_SIZE / 8];
 static  TX_THREAD   SemaphoreTaskStartTCB;
 static  uint64_t    SemaphoreTaskStartStk[APP_CFG_TASK_START_STK_SIZE / 8];
 
+static  TX_THREAD   EventTaskStartTCB;
+static  uint64_t    EventTaskStartStk[APP_CFG_TASK_START_STK_SIZE / 8];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -234,6 +265,17 @@ VOID tx_application_define(VOID *first_unused_memory)
                    AppTaskMsgPro,                  /* 启动任务函数地址 */
                    0,                             /* 传递给任务的参数 */
                    &SemaphoreTaskStartStk[0],            /* 堆栈基地址 */
+                   APP_CFG_TASK_START_STK_SIZE,    /* 堆栈空间大小 */
+                   SEMP_CFG_TASK_PRIO,              /* 任务优先级*/
+                   SEMP_CFG_TASK_PRIO,              /* 任务抢占阀值 */
+                   TX_NO_TIME_SLICE,               /* 不开启时间片 */
+                   TX_AUTO_START);                 /* 创建后立即启动 */
+
+  tx_thread_create(&EventTaskStartTCB,              /* 任务控制块地址 */
+                   "Event Task Start",              /* 任务名 */
+                   EvnetTaskMsgPro,                  /* 启动任务函数地址 */
+                   0,                             /* 传递给任务的参数 */
+                   &EventTaskStartStk[0],            /* 堆栈基地址 */
                    APP_CFG_TASK_START_STK_SIZE,    /* 堆栈空间大小 */
                    SEMP_CFG_TASK_PRIO,              /* 任务优先级*/
                    SEMP_CFG_TASK_PRIO,              /* 任务抢占阀值 */

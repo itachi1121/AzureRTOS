@@ -42,7 +42,9 @@ extern "C" {
 
 /* Exported constants --------------------------------------------------------*/
 /* USER CODE BEGIN EC */
+#define E_BIT(n)            (1 << n)
 
+#define EVENT_KEY_PRESS   E_BIT(0)
 /* USER CODE END EC */
 
 /* Exported macro ------------------------------------------------------------*/
