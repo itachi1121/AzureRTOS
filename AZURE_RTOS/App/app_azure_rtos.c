@@ -79,6 +79,13 @@ TX_SEMAPHORE Semaphore;
 TX_EVENT_FLAGS_GROUP EventGroup;
 
 
+TX_QUEUE MessageQueues1;
+
+#define   QUEUE_BUF_SIZE     (5 * 4)  //每个队列的大小（单位字节, 范围 1-16个32bit）
+#define   QUEUE_BUF_TOTAL_SIZE  (10 * QUEUE_BUF_SIZE)  //消息队列缓冲区总大小
+
+uint8_t MessageQueuesBuf1[QUEUE_BUF_TOTAL_SIZE]; /* 定义消息队列缓冲 1 */
+
 static TX_MUTEX AppPrintfSemp; /* 用于 printf 互斥 */
 /*
 *********************************************************************************************************
@@ -127,7 +134,7 @@ static  void  AppTaskStart (ULONG thread_input)
     tx_thread_sleep(200);
 
     //App_Printf("app task %d\r\n", ++i);
-    App_Printf("app task %d\r\n", ++i);
+//  App_Printf("app task %d\r\n", ++i);
 
     if(i % 5 == 0)
     {
@@ -194,19 +201,52 @@ static void EvnetTaskMsgPro(ULONG thread_input)
   printf("event task start \r\n");
 
   tx_event_flags_create(&EventGroup, "EventGroupName");
-  
+
   while(1)
   {
-    status = tx_event_flags_get(&EventGroup, 
-                                  EVENT_KEY_PRESS, 
-                                  TX_OR_CLEAR, 
-                                  &actual_events, 
-                                  TX_WAIT_FOREVER); 
+    status = tx_event_flags_get(&EventGroup,
+                                EVENT_KEY_PRESS,
+                                TX_OR_CLEAR,
+                                &actual_events,
+                                TX_WAIT_FOREVER);
 
     if(status == TX_SUCCESS)
     {
       /* 事件发生 */
       printf("get pressed event \r\n");
+    }
+  }
+}
+
+
+static void QueueTaskMsgPro(ULONG thread_input)
+{
+  UINT status ;
+  ULONG actual_events;
+
+  printf("queue task start \r\n");
+
+  status = tx_queue_create(&MessageQueues1,
+                           "MessageQueues1",
+                           QUEUE_BUF_SIZE / 4, /* 每次消息队列发送的数据大小，单位 32bit，范围 1-16 */
+                           (VOID *)MessageQueuesBuf1,
+                           sizeof(MessageQueuesBuf1)  /* 消息队列的总大小，单位字节 */
+                          );
+
+  printf("create queue ret %x \r\n", status);
+
+  uint8_t RecMessage[20] = {0};
+
+  while(1)
+  {
+    status = tx_queue_receive(&MessageQueues1, RecMessage, TX_WAIT_FOREVER);
+
+    if(status == TX_SUCCESS)
+    {
+      for(int i = 0; i < 20; i++)
+      {
+        printf("[%d] %02x\r\n", i, RecMessage[i]);
+      }
     }
   }
 }
@@ -222,6 +262,9 @@ static  uint64_t    SemaphoreTaskStartStk[APP_CFG_TASK_START_STK_SIZE / 8];
 
 static  TX_THREAD   EventTaskStartTCB;
 static  uint64_t    EventTaskStartStk[APP_CFG_TASK_START_STK_SIZE / 8];
+
+static  TX_THREAD   QueueTaskStartTCB;
+static  uint64_t    QueueTaskStartStk[APP_CFG_TASK_START_STK_SIZE / 8];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -282,6 +325,17 @@ VOID tx_application_define(VOID *first_unused_memory)
                    TX_NO_TIME_SLICE,               /* 不开启时间片 */
                    TX_AUTO_START);                 /* 创建后立即启动 */
 
+
+  tx_thread_create(&QueueTaskStartTCB,              /* 任务控制块地址 */
+                   "Queue Task Start",              /* 任务名 */
+                   QueueTaskMsgPro,                  /* 启动任务函数地址 */
+                   0,                             /* 传递给任务的参数 */
+                   &QueueTaskStartStk[0],            /* 堆栈基地址 */
+                   APP_CFG_TASK_START_STK_SIZE,    /* 堆栈空间大小 */
+                   SEMP_CFG_TASK_PRIO,              /* 任务优先级*/
+                   SEMP_CFG_TASK_PRIO,              /* 任务抢占阀值 */
+                   TX_NO_TIME_SLICE,               /* 不开启时间片 */
+                   TX_AUTO_START);                 /* 创建后立即启动 */
   /* USER CODE END  tx_application_define */
 
   VOID *memory_ptr;
